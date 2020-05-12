@@ -1,1 +1,3 @@
-./words_craft
+words_craft
+go.sum
+go.mod
