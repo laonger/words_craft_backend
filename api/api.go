@@ -2,65 +2,73 @@ package api
 
 import (
     "fmt"
+    "strconv"
     //"time"
-    "golang.org/x/net/websocket"
-    model "words_craft/model"
-    game "words_craft/game"
-    net "words_craft/net"
+    "errors"
+    //"words_craft/model"
+    "words_craft/net"
+    "words_craft/game"
+    "words_craft/player"
 )
 
-func apiTest(params map[string]interface{}) (interface{}, error) {
+func apiTest(user *player.User, params map[string]interface{}) (interface{}, error) {
     fmt.Println("api", params)
     return params, nil
 }
 
-func regist(params map[string]interface{}) (interface{}, error) {
+func regist(user *player.User, params map[string]interface{}) (interface{}, error) {
     name := params["name"].(string)
     pass := params["pass"].(string)
-    if (name == "" || pass=="") {
+    nick := params["nick_name"].(string)
+
+    if (name == "" || pass=="" || nick=="") {
         return nil, API_Error{10003001}
     }
-    _, ok := model.USER_PASS_MAP[name]
-    if ok {
+    userRecord, err := player.Regist(name, pass, nick)
+    if (errors.Is(err, player.ErrorUserExist{})) {
         return nil, API_Error{10003001}
     } else {
-        record := map[string]string {
-            "pass": pass,
-            "id": name,
-        }
-        model.USER_PASS_MAP[name] = record
-        player := model.User {
-            Id: name,
-            Name: name,
-            Level: 0,
-        }
-        model.USER[name] = player
-        return player, nil
+        user.Id = userRecord.Id
+        user.UserName = userRecord.UserName
+        user.NickName = userRecord.NickName
+        user.Level = userRecord.Level
+        user.Link = nil
+        return API_Player {
+            Id: user.Id,
+            Name: user.NickName,
+            Level: user.Level,
+        }, nil
     }
     return nil, nil
 }
 
 // params = {"name": string, "pass": string}
-func login(params map[string]interface{}) (interface{}, error) {
+func login(user *player.User, params map[string]interface{}) (interface{}, error) {
     name := params["name"].(string)
     pass := params["pass"].(string)
+    if (name == "" || pass=="") {
+        return nil, API_Error{10002001}
+    }
 
-    pass_record := model.USER_PASS_MAP[name]
+    userRecord, err := player.Login(name, pass)
 
-    if (name == "" || pass=="" || pass_record["pass"] != pass) {
+    if (errors.Is(err, player.ErrorWrongPass{}) || errors.Is(err, player.ErrorNoUser{})){
         return nil, API_Error{10002001}
     } else {
-        player_record := model.USER[pass_record["id"]]
-        player := API_Player{
-            Id: player_record.Id,
-            Name: player_record.Name,
-            Level: player_record.Level,
-        }
-        return player, nil
+        user.Id = userRecord.Id
+        user.UserName = userRecord.UserName
+        user.NickName = userRecord.NickName
+        user.Level = userRecord.Level
+        user.Link = nil
+        return API_Player {
+            Id: user.Id,
+            Name: user.NickName,
+            Level: user.Level,
+        }, nil
     }
 }
 
-func enterGame(ws *websocket.Conn, params map[string]interface{}) (interface{}, error){
+func enterGame(user *player.User, params map[string]interface{}) (interface{}, error){
     /*
     word_1 := 
     word_2 := WordStruct{
@@ -70,31 +78,31 @@ func enterGame(ws *websocket.Conn, params map[string]interface{}) (interface{}, 
     }
     */
     var gameData API_Game
-    if aORb, room, err := game.JoinGame("aaaa", ws); aORb == 1 {
+    if aORb, room, err := game.JoinGame(user); aORb == 1 {
         if err != nil {
         }
         gameData = API_Game{
-            RoomNum: room.RoomId,
+            RoomId: room.RoomId,
             NeedWait: true,
         }
     } else {
         word, _ := game.NextQuestion(room)
         otherGameData := API_Game{
-            Other: API_Player{ room.UserA, "我", 1},
+            Other: API_Player{ user.Id, user.NickName, user.Level},
             Word: word,
-            Num: room.QuestionNum +1,
-            RoomNum: room.RoomId,
+            Num: room.QuestionNum,
+            RoomId: room.RoomId,
             QuestionAmount: len(room.Questions),
             Timestamp: room.StartTime.Unix(),
             NeedWait: false,
         }
-        net.Send(room.UserALink, 90001, otherGameData)
+        net.Send(room.UserA.Link, 10101, otherGameData)
 
         gameData = API_Game{
-            Other: API_Player{ room.UserA, "他", 1},
+            Other: API_Player{ room.UserA.Id, room.UserA.NickName, room.UserA.Level},
             Word: word,
-            Num: room.QuestionNum +1,
-            RoomNum: room.RoomId,
+            Num: room.QuestionNum,
+            RoomId: room.RoomId,
             QuestionAmount: len(room.Questions),
             Timestamp: room.StartTime.Unix(),
             NeedWait: false,
@@ -103,3 +111,49 @@ func enterGame(ws *websocket.Conn, params map[string]interface{}) (interface{}, 
     }
     return gameData, nil
 }
+
+func commitAnswer(user *player.User, params map[string]interface{}) (interface{}, error) {
+    answer, _ := strconv.Atoi(params["answer"].(string))
+    useTime, _ := strconv.Atoi(params["useTime"].(string))
+    needWait, getScore, otherScore, realAnswer, err := game.CommitAnswer(user, answer, useTime)
+    if err != nil {
+        return nil, nil
+    } else {
+        if needWait {
+            return API_ResponseCommitAnswer{
+                NeedWait: needWait,
+                GetScore: getScore,
+            }, nil
+        } else {
+            room := game.Rooms[user.RoomId]
+            word, _ := game.NextQuestion(room)
+
+            //// 给另对方发送新的问题
+            var other *player.User
+            if room.UserA.Id == user.Id {
+                other = room.UserB
+            } else {
+                other = room.UserA
+            }
+            net.Send(other.Link, 10102, API_ResponseCommitAnswer{
+                Answer: realAnswer,
+                GetScore: otherScore,
+                NeedWait: needWait,
+                Num: room.QuestionNum,
+                OtherScore: getScore,
+                Word: word,
+            })
+            ///////
+
+            return API_ResponseCommitAnswer{
+                Answer: realAnswer,
+                NeedWait: needWait,
+                GetScore: getScore,
+                OtherScore: otherScore,
+                Num: room.QuestionNum,
+                Word: word,
+            }, nil
+        }
+    }
+}
+

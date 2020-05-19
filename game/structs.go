@@ -2,8 +2,10 @@ package game
 
 import (
     "time"
-    "golang.org/x/net/websocket"
+    "words_craft/player"
 )
+
+var TIME_COUNTDOWN = 10
 
 type Word struct {
     Options []string `json: "chinese"`
@@ -15,19 +17,21 @@ type questionStruct struct {
     question string
     options []string
     aAnswer int
-    aTime time.Duration
     bAnswer int
+    aTime time.Duration
     bTime time.Duration
+    aUseTime int
+    bUseTime int
+    aScore int  // 此题获得分数
+    bScore int
     answer int
 }
 
 type RoomStruct struct {
     RoomId string
     Level string
-    UserA string    // userId
-    UserB string    // userId
-    UserALink *websocket.Conn
-    UserBLink *websocket.Conn
+    UserA *player.User    // userId
+    UserB *player.User    // userId
     Questions []questionStruct
     StartTime time.Time
     QuestionNum int

@@ -23,13 +23,15 @@ var USER_PASS_MAP = map[string]map[string]string {
 
 type User struct {
     Id string
-    Name string
+    NickName string
+    UserName string
     Level int
 }
 var USER = map[string]User {
     "aabba": User{
         Id: "aabba",
-        Name: "哟",
+        NickName: "哟",
+        UserName: "aaa",
         Level: 1,
     },
 }

@@ -6,13 +6,15 @@ import (
     "golang.org/x/net/websocket"
     "net/http"
 
-    net "words_craft/net"
-    api "words_craft/api"
+    "words_craft/net"
+    "words_craft/api"
+    "words_craft/player"
 )
 
 
 func litsen(ws *websocket.Conn) {
-    user = nil
+    user := player.User{}
+    user.Link = nil
     for {
         var err error
         var request string
@@ -28,11 +30,7 @@ func litsen(ws *websocket.Conn) {
             continue
         }
         // 运行处理函数
-        if (api_num > 90000){
-            result, err = api.API_NUM_FUNC_WITH_WS_MAP[api_num](ws, params)
-        } else {
-            result, err = api.API_NUM_FUNC_MAP[api_num](params)
-        }
+        result, err = api.API_NUM_FUNC_MAP[api_num](&user, params)
         if err != nil {
             println(5, "result: ", api_num, " :", err)
             err = net.SendString(ws, api_num, err.Error())
@@ -42,6 +40,9 @@ func litsen(ws *websocket.Conn) {
             }
         } else {
             println(7, "result", api_num, ":", result)
+            if user.Link == nil {
+                user.Link = ws
+            }
             err = net.Send(ws, api_num, result)
             if err != nil {
                 println(4, "e", err)

@@ -4,8 +4,8 @@ import (
     "fmt"
     "time"
     "errors"
-    "golang.org/x/net/websocket"
     //"words_craft/model"
+    "words_craft/player"
 )
 
 
@@ -32,29 +32,40 @@ func newQuestions(level string) ([]questionStruct, error){
             questionStruct {
                 question: "apple",
                 options: []string{ "苹果", "香蕉", "李子", "梨", "没有正确答案" },
-                aAnswer: -1,
-                aTime: 0,
-                bAnswer: -1,
-                bTime: 0,
                 answer: 0,
+                aAnswer: -2,
+                aUseTime : -1,
+                bAnswer: -2,
+                bTime: 0,
+                bUseTime: -1,
+                aScore: -1,
+                bScore: -1,
             },
             questionStruct {
                 question: "banana",
                 options: []string{ "苹果", "香蕉", "李子", "梨", "没有正确答案" },
-                aAnswer: -1,
-                aTime: 0,
-                bAnswer: -1,
-                bTime: 0,
                 answer: 1,
+                aAnswer: -2,
+                aTime: 0,
+                aUseTime : -1,
+                bAnswer: -2,
+                bTime: 0,
+                bUseTime: -1,
+                aScore: -1,
+                bScore: -1,
             },
             questionStruct {
                 question: "pear",
                 options: []string{ "苹果", "香蕉", "李子", "梨", "没有正确答案" },
-                aAnswer: -1,
+                answer: 3,
+                aAnswer: -2,
                 aTime: 0,
-                bAnswer: -1,
+                aUseTime : -1,
+                bAnswer: -2,
                 bTime: 0,
-                answer: 2,
+                bUseTime: -1,
+                aScore: -1,
+                bScore: -1,
             },
     }, nil
 }
@@ -77,9 +88,8 @@ func NextQuestion(room *RoomStruct) (Word, error) {
 }
 
 
-
 // 如果加入的是userA则返回1，如果是userB则返回2
-func JoinGame(userId string, userLink *websocket.Conn) (aORb int, room *RoomStruct, err error) {
+func JoinGame(user *player.User) (aORb int, room *RoomStruct, err error) {
     tempRoomsWriteLock = true
     if (len(tempRooms) > 0){
         room = tempRooms[0]
@@ -87,8 +97,8 @@ func JoinGame(userId string, userLink *websocket.Conn) (aORb int, room *RoomStru
         if (len(tempRooms) == 0){
             tempRooms = []*RoomStruct{}
         }
-        room.UserB = userId
-        room.UserBLink = userLink
+        room.UserB = user
+        user.RoomId = room.RoomId
         questions, _ := newQuestions(room.Level)
         room.Questions = questions
         room.StartTime = time.Now()
@@ -102,19 +112,46 @@ func JoinGame(userId string, userLink *websocket.Conn) (aORb int, room *RoomStru
         return 2, room, nil
     } else {
         room = &RoomStruct{
-            RoomId: makeRoomId(userId),
+            RoomId: makeRoomId(user.Id),
             Level: "",
-            UserA: userId,
-            UserB: "",
-            UserALink: userLink,
-            UserBLink: new(websocket.Conn),
+            UserA: user,
+            UserB: nil,
             Questions: []questionStruct{},
             StartTime: time.Now(),
             QuestionNum: -1,
         }
+        user.RoomId = room.RoomId
         tempRooms = append(tempRooms, room)
         tempRoomsWriteLock = false
         return 1, room, nil
     }
 }
+
+func CommitAnswer(user *player.User, answer int, useTime int) (needWait bool, getScore int, otherScore int, realAnswer string, err error){
+    needWait = true
+    room := Rooms[user.RoomId]
+    getScore = 0
+    println("gamegamegamemgae: ", answer, useTime, room.QuestionNum, len(room.Questions))
+    question := &room.Questions[room.QuestionNum]
+    if answer == question.answer {
+        getScore = (TIME_COUNTDOWN - useTime)*10
+    }
+    if user.Id == room.UserA.Id {
+        question.aAnswer = answer
+        question.aUseTime = useTime
+        question.aScore = getScore
+        otherScore = question.bScore
+    } else {
+        question.bAnswer = answer
+        question.bUseTime = useTime
+        question.bScore = getScore
+        otherScore = question.aScore
+    }
+    if (question.aAnswer != -2 && question.bAnswer != -2){
+        needWait = false
+    }
+    return needWait, getScore, otherScore, question.options[question.answer], nil
+
+}
+
 

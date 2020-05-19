@@ -54,7 +54,7 @@ type API_Player struct {
 type API_Game struct {
     Other API_Player `json: "other"`
     Word game.Word `json: "word"`
-    RoomNum string `json: "room_num"`
+    RoomId string `json: "room_num"`
     QuestionAmount int `json: "question_amount"`
     Num int `json: "num"`
     Timestamp int64 `json: "timestamp"`
@@ -66,3 +66,11 @@ type API_UserNamePass struct {
     Pass string `json: "pass"`
 }
 
+type API_ResponseCommitAnswer struct {
+    Word game.Word `json: "word"`
+    Answer string `json: "answer"`
+    Num int `json: "num"`
+    NeedWait bool `json: "need_wait"`
+    GetScore int `json: "getScore"`
+    OtherScore int `json: "otherScore"`
+}
